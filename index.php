@@ -50,7 +50,9 @@ $app = new Slim\App();
 $app->get('/acontecimiento[/[{param_id}]]', function ($request, $response, $args) {
    // Comprueba los parámetros
    if (empty($args['param_id'])){
-         $output = '{"error":-14, "message":"Parámetros incorrectos"}';
+      $output = '{"error":-14, "message":"Parámetros incorrectos"}';
+   } else if (!is_numeric($args['param_id'])){
+      $output = '{"error":-14, "message":"Parámetros incorrectos"}';
    } else {
       // Crea los parámetros
       $param_id = intval($args['param_id']);
