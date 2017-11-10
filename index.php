@@ -10,6 +10,8 @@
 
 /**
  * Función de conexión a la base de datos
+ * Se puede escribir en otro fichero e incluirlo con:
+ * include_once("conexion.php");
  **/
 function connectionDB() {
       /**
@@ -41,18 +43,25 @@ function connectionDB() {
 // Registra la librería Slim descargada con Composer
 require 'vendor/autoload.php';
 
-// Crea la aplicación con el servidor REST
-$app = new Slim\App();
+// Crea la aplicación con el servidor REST y oculta los errores de ejecución de Slim Framework
+//$app = new Slim\App();
+// Crea la aplicación con el servidor REST y muestra los errores de ejecución de Slim Framework
+$app = new Slim\App(['settings' => ['displayErrorDetails' => true]]);
 
 /**
  * Operación GET de recuperación de un recurso mediante su identificador
+ *
+ * Los datos de salida se van creando en un array asociativo
+ * para luego convertirlos a formato JSON con la función 'json_encode'.
  **/
 $app->get('/acontecimiento[/[{param_id}]]', function ($request, $response, $args) {
    // Comprueba los parámetros
    if (empty($args['param_id'])){
-      $output = '{"error":-14, "message":"Parámetros incorrectos"}';
+      $output['code'] = -14;
+      $output['message'] = "Parámetros incorrectos";
    } else if (!is_numeric($args['param_id'])){
-      $output = '{"error":-14, "message":"Parámetros incorrectos"}';
+      $output['code'] = -14;
+      $output['message'] = "Parámetros incorrectos";
    } else {
       // Crea los parámetros
       $param_id = intval($args['param_id']);
@@ -76,57 +85,52 @@ $app->get('/acontecimiento[/[{param_id}]]', function ($request, $response, $args
 
             if ($record_acontecimiento != false) {
                // Elimina los valores vacíos del registro
-               $record_acontecimiento = array_filter($record_acontecimiento);
-
-               $output = '{"acontecimiento":';
-
-               // Convierte el array a formato JSON con caracteres Unicode y modo tabulado
-               // Deshabilitar JSON_PRETTY_PRINT con el servidor REST en producción
-               $output .= json_encode($record_acontecimiento, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+               $output['acontecimiento'] = array_filter($record_acontecimiento);
 
                // Prepara y ejecuta la sentencia
                $stmt_eventos = $db->prepare($sql_eventos);
                $stmt_eventos->bindParam(":bind_id", $param_id, PDO::PARAM_INT);
                $stmt_eventos->execute();
 
-               // Obtiene uno a uno los registros para eliminar los valores vacíos en ellos
-               $record_eventos = array();
-               while ($record = $stmt_eventos->fetch(PDO::FETCH_ASSOC))
-                  array_push($record_eventos, array_filter($record));
-
-               if (sizeof($record_eventos) != 0) {
-                  $output .= ',"eventos":';
-
-                  // Convierte el array a formato JSON con caracteres Unicode y modo tabulado
-                  // Deshabilitar JSON_PRETTY_PRINT con el servidor REST en producción
-                  $output .= json_encode($record_eventos, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+               if($stmt_eventos->rowCount() != 0){
+                  $output['eventos'] = array();
+                  // Obtiene uno a uno los registros y elimina los valores vacíos en ellos
+                  while ($record = $stmt_eventos->fetch(PDO::FETCH_ASSOC))
+                     array_push($output['eventos'], array_filter($record));
                }
-
-               $output .= '}';
             } else {
-               $output = '{"error": -11, "message": "El acontecimiento no existe"}';
+               $output['code'] = -11;
+               $output['message'] = "El acontecimiento no existe";
             }
 
             // Cierra la conexión con la base de datos
             $db = null;
          }
       } catch (PDOException $e) {
-         $output = '{"error": -9, "message": "Excepción en la base de datos: ' . $e->getMessage() . '"}';
+         $output['code'] = -9;
+         $output['message'] = "Excepción en la base de datos: " . $e->getMessage();
       }
    }
 
+   // Devuelve la salida que debe mostrar el servidor
    return $response
       ->withHeader('Content-type', 'application/json; charset=UTF-8')
-      ->write($output);
+      // Convierte el array asociativo a formato JSON con caracteres Unicode y modo tabulado
+      // Deshabilitar JSON_PRETTY_PRINT con el servidor REST en producción
+      ->write(json_encode($output, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 });
 
 /**
  * Operación GET de recuperación de recursos mediante palabras
+ *
+ * Los datos de salida se van creando en un array asociativo
+ * para luego convertirlos a formato JSON con la función 'json_encode'.
  **/
 $app->get('/buscar/nombre[/[{param_words}]]', function ($request, $response, $args) {
    // Comprueba los parámetros
    if (empty($args['param_words'])){
-      $output = '{"error":-14, "message":"Parámetros incorrectos"}';
+      $output['code'] = -14;
+      $output['message'] = "Parámetros incorrectos";
    } else {
       // Comprueba el parámetro de entrada y lo separa en palabras
       $array_words = explode(' ', $args['param_words']);
@@ -155,31 +159,31 @@ $app->get('/buscar/nombre[/[{param_words}]]', function ($request, $response, $ar
                $records_busqueda = $stmt_busqueda->fetchAll(PDO::FETCH_ASSOC);
 
                if ($records_busqueda != false) {
-                  $output = '{"acontecimientos":';
-
-                  // Convierte el array a formato JSON con caracteres Unicode y modo tabulado
-                  // Deshabilitar JSON_PRETTY_PRINT con el servidor REST en producción
-                  $output .= json_encode($records_busqueda, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-
-                  $output .= '}';
+                  $output['acontecimientos'] = $records_busqueda;
                } else {
-                  $output = '{"error": -12, "message": "No se han encontrado acontecimientos"}';
+                  $output['code'] = -12;
+                  $output['message'] = "No se han encontrado acontecimientos";
                }
 
                // Cierra la conexión con la base de datos
                $db = null;
             }
          } catch (PDOException $e) {
-            $output = '{"error": -9, "message": "Excepción en la base de datos: ' . $e->getMessage() . '"}';
+            $output['code'] = -9;
+            $output['message'] = "Excepción en la base de datos: " . $e->getMessage();
          }
       } else {
-         $output = '{“error”:-13, “message”:”Parámetros de búsqueda incorrectos”}';
+         $output['code'] = -13;
+         $output['message'] = "Parámetros de búsqueda incorrectos";
       }
    }
 
+   // Devuelve la salida que debe mostrar el servidor
    return $response
       ->withHeader('Content-type', 'application/json; charset=UTF-8')
-      ->write($output);
+      // Convierte el array asociativo a formato JSON con caracteres Unicode y modo tabulado
+      // Deshabilitar JSON_PRETTY_PRINT con el servidor REST en producción
+      ->write(json_encode($output, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 });
 
 /**
@@ -190,6 +194,9 @@ $app->get('/buscar/nombre[/[{param_words}]]', function ($request, $response, $ar
  *        "email": "info@ticarte.com"
  *       }
  *    }
+ *
+ * Los datos de salida se van creando en un array asociativo
+ * para luego convertirlos a formato JSON con la función 'json_encode'.
  **/
 $app->post('/acontecimiento', function ($request, $response, $args) {
    // Obtiene el body de la petición recibida
@@ -200,7 +207,8 @@ $app->post('/acontecimiento', function ($request, $response, $args) {
 
    // Comprueba los errores en el contenido JSON
    if (json_last_error() != JSON_ERROR_NONE) {
-      $output = '{"error":-21, "message": "Contenido JSON con errores"}';
+      $output['code'] = -21;
+      $output['message'] = "Contenido JSON con errores";
    } else {
       // Comprueba los valores del contenido JSON
       $acontecimiento['acontecimiento']['nombre'] = (!empty($acontecimiento['acontecimiento']['nombre'])) ? $acontecimiento['acontecimiento']['nombre'] : '';
@@ -220,19 +228,25 @@ $app->post('/acontecimiento', function ($request, $response, $args) {
             $stmt_insert->bindParam(":bind_email", $acontecimiento['acontecimiento']['email'], PDO::PARAM_STR);
             $stmt_insert->execute();
 
-            $output = '{"error": 1, "message": "Acontecimiento insertado correctamente con el id '.$db->lastInsertId().'"}';
+            $output['code'] = 1;
+            $output['message'] = "Acontecimiento insertado correctamente";
+            $output['id'] = $db->lastInsertId();
 
             // Cierra la conexión con la base de datos
             $db = null;
          }
       } catch(PDOException $e) {
-         $output = '{"error": -9, "message": "Excepción en la base de datos: '.$e->getMessage().'"}';
+         $output['code'] = -9;
+         $output['message'] = "Excepción en la base de datos: ".$e->getMessage();
       }
    }
 
+   // Devuelve la salida que debe mostrar el servidor
    return $response
       ->withHeader('Content-type', 'application/json; charset=UTF-8')
-      ->write($output);
+      // Convierte el array asociativo a formato JSON con caracteres Unicode y modo tabulado
+      // Deshabilitar JSON_PRETTY_PRINT con el servidor REST en producción
+      ->write(json_encode($output, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
 });
 
 // Inicia la aplicación con el servidor REST
